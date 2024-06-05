@@ -7,12 +7,11 @@
 
 class VolumePanel: public QWidget
 {
-private:
+public:
     QLabel* title;
     QProgressBar* bar;
     CustomButton* minusButton;
     CustomButton* plusButton;
-public:
     VolumePanel(QObject* parent = nullptr);
 };
 

@@ -21,23 +21,29 @@ public:
     void play();
     void pause();
     void stop();
-    void setVolume(int volume);
+    void setVolume(int volumeLeft, int volumeRight);
     void setEqualizer(int band, float gain);
     QString formatTime(int seconds);
+    void onUpdateTimer();
 
 signals:
     void updateProgress(int currentTime, int duration);
 
-private slots:
-    void onUpdateTimer();
+public slots:
+    void onSoundChanged()
+    {
+        setVolume(volumePanel1->bar->value(), volumePanel2->bar->value());
+    }
 
 private:
     void initializeAudio();
     void cleanupAudio();
 
+    VolumePanel* volumePanel1;
+    VolumePanel* volumePanel2;
+
     mpg123_handle *mh;
     snd_pcm_t *pcm_handle;
-    QTimer *timer;
     QPushButton *loadButton;
     QPushButton *playButton;
     QPushButton *pauseButton;

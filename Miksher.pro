@@ -17,8 +17,7 @@ SOURCES += \
     main.cpp \
     mainwindow.cpp \
     miksher.cpp \
-    volumepanel.cpp \
-    worker.cpp
+    volumepanel.cpp
 
 HEADERS += \
     audioplayer.h \
@@ -27,8 +26,7 @@ HEADERS += \
     equalizersgroup.h \
     mainwindow.h \
     miksher.h \
-    volumepanel.h \
-    worker.h
+    volumepanel.h
 
 FORMS += \
     mainwindow.ui

@@ -5,7 +5,7 @@
 #include <QHBoxLayout>
 #include <qthread.h>
 
-AudioPlayer::AudioPlayer(QWidget *parent) : QWidget(parent), mh(nullptr), pcm_handle(nullptr), timer(nullptr), volume(100), currentChannel(0) {
+AudioPlayer::AudioPlayer(QWidget *parent) : QWidget(parent), mh(nullptr), pcm_handle(nullptr), volume(100), currentChannel(0) {
     initializeAudio();
 
     loadButton = new QPushButton("Load", this);
@@ -18,7 +18,7 @@ AudioPlayer::AudioPlayer(QWidget *parent) : QWidget(parent), mh(nullptr), pcm_ha
         QString filePath = QFileDialog::getOpenFileName(this, "Open MP3 File", "", "MP3 Files (*.mp3)");
         if (!filePath.isEmpty()) {
             QThread* thread = new QThread;
-            QObject::connect(thread, &QThread::started, [&, filePath](){
+            connect(thread, &QThread::started, [&, filePath](){
                 loadFile(filePath);
             });
             thread->start();
@@ -56,8 +56,6 @@ void AudioPlayer::initializeAudio() {
     mh = mpg123_new(nullptr, nullptr);
     snd_pcm_open(&pcm_handle, "default", SND_PCM_STREAM_PLAYBACK, 0);
     snd_pcm_set_params(pcm_handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 2, 44100, 1, 500000);
-    timer = new QTimer(this);
-    connect(timer, &QTimer::timeout, this, &AudioPlayer::onUpdateTimer);
 }
 
 void AudioPlayer::cleanupAudio() {
@@ -70,8 +68,6 @@ void AudioPlayer::cleanupAudio() {
         snd_pcm_close(pcm_handle);
         pcm_handle = nullptr;
     }
-    delete timer;
-    timer = nullptr;
     mpg123_exit();
 }
 
@@ -89,7 +85,6 @@ bool AudioPlayer::loadFile(const QString &filePath) {
         snd_pcm_writei(pcm_handle, buffer, done / 4);
         onUpdateTimer();
     }
-//    cleanupAudio()
     return err == MPG123_OK;
 }
 
@@ -106,9 +101,8 @@ void AudioPlayer::pause() {
     }
 }
 
-void AudioPlayer::setVolume(int volume) {
+void AudioPlayer::setVolume(int volumeLeft, int volumeRight) {
     if (!mh || !pcm_handle) return;
-    this->volume = volume;
 
     long min, max;
     snd_mixer_t *mixer;
@@ -116,24 +110,34 @@ void AudioPlayer::setVolume(int volume) {
     const char *card = "default";
     const char *selem_name = "Master";
 
+    // Открываем микшер
     snd_mixer_open(&mixer, 0);
+
+    // Инициализируем микшер
     snd_mixer_attach(mixer, card);
     snd_mixer_selem_register(mixer, nullptr, nullptr);
     snd_mixer_load(mixer);
 
+    // Находим элемент управления громкостью
     snd_mixer_selem_id_t *sid;
     snd_mixer_selem_id_alloca(&sid);
     snd_mixer_selem_id_set_index(sid, 0);
     snd_mixer_selem_id_set_name(sid, selem_name);
     elem = snd_mixer_find_selem(mixer, sid);
 
+    // Получаем минимальное и максимальное значение громкости
     snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
 
-    long volumeAlsa = (volume * (max - min)) / 100 + min;
-    snd_mixer_selem_set_playback_volume_all(elem, volumeAlsa);
+    // Устанавливаем громкость для левого и правого каналов
+    long volumeLeftAlsa = (volumeLeft * (max - min)) / 100 + min;
+    long volumeRightAlsa = (volumeRight * (max - min)) / 100 + min;
+    snd_mixer_selem_set_playback_volume(elem, SND_MIXER_SCHN_FRONT_LEFT, volumeLeftAlsa);
+    snd_mixer_selem_set_playback_volume(elem, SND_MIXER_SCHN_FRONT_RIGHT, volumeRightAlsa);
 
+    // Закрываем микшер
     snd_mixer_close(mixer);
 }
+
 
 void AudioPlayer::setEqualizer(int band, float gain) {
     if (!mh || !pcm_handle) return;
