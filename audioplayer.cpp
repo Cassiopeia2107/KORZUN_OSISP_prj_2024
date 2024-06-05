@@ -3,6 +3,7 @@
 #include <QFileDialog>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <qthread.h>
 
 AudioPlayer::AudioPlayer(QWidget *parent) : QWidget(parent), mh(nullptr), pcm_handle(nullptr), timer(nullptr), volume(100), currentChannel(0) {
     initializeAudio();
@@ -10,14 +11,17 @@ AudioPlayer::AudioPlayer(QWidget *parent) : QWidget(parent), mh(nullptr), pcm_ha
     loadButton = new QPushButton("Load", this);
     pauseButton = new QPushButton("Pause", this);
     progressSlider = new QSlider(Qt::Horizontal, this);
+    progressSlider->setEnabled(false);
     timeLabel = new QLabel("00:00 / 00:00", this);
 
     connect(loadButton, &QPushButton::clicked, [this]() {
         QString filePath = QFileDialog::getOpenFileName(this, "Open MP3 File", "", "MP3 Files (*.mp3)");
-        qDebug() << filePath;
         if (!filePath.isEmpty()) {
-            qDebug() << "da";
-            loadFile(filePath);
+            QThread* thread = new QThread;
+            QObject::connect(thread, &QThread::started, [&, filePath](){
+                loadFile(filePath);
+            });
+            thread->start();
         }
     });
 
@@ -79,35 +83,56 @@ bool AudioPlayer::loadFile(const QString &filePath) {
     progressSlider->setMaximum(duration);
     timeLabel->setText(QString("%1 / %2").arg(formatTime(0)).arg(formatTime(duration)));
 
-    timer->setInterval(1000);
     unsigned char buffer[4096];
     size_t done;
     while (mpg123_read(mh, buffer, sizeof(buffer), &done) == MPG123_OK) {
         snd_pcm_writei(pcm_handle, buffer, done / 4);
+        onUpdateTimer();
     }
+//    cleanupAudio()
     return err == MPG123_OK;
 }
 
 
 void AudioPlayer::pause() {
     if (!mh || !pcm_handle) return;
-    if(timer->isActive())
-        timer->setInterval(0);
-    else
-        timer->setInterval(1000);
-    // implement pause logic
-}
-
-void AudioPlayer::stop() {
-    if (!mh || !pcm_handle) return;
-    timer->stop();
-    snd_pcm_drop(pcm_handle);
+    if(snd_pcm_state(pcm_handle) == SND_PCM_STATE_RUNNING){
+        snd_pcm_pause(pcm_handle, 1);
+        pauseButton->setText("Continue");
+    }
+    else{
+        snd_pcm_pause(pcm_handle, 0);
+        pauseButton->setText("Pause");
+    }
 }
 
 void AudioPlayer::setVolume(int volume) {
     if (!mh || !pcm_handle) return;
     this->volume = volume;
-    // Implement volume adjustment logic using ALSA's mixer API
+
+    long min, max;
+    snd_mixer_t *mixer;
+    snd_mixer_elem_t *elem;
+    const char *card = "default";
+    const char *selem_name = "Master";
+
+    snd_mixer_open(&mixer, 0);
+    snd_mixer_attach(mixer, card);
+    snd_mixer_selem_register(mixer, nullptr, nullptr);
+    snd_mixer_load(mixer);
+
+    snd_mixer_selem_id_t *sid;
+    snd_mixer_selem_id_alloca(&sid);
+    snd_mixer_selem_id_set_index(sid, 0);
+    snd_mixer_selem_id_set_name(sid, selem_name);
+    elem = snd_mixer_find_selem(mixer, sid);
+
+    snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
+
+    long volumeAlsa = (volume * (max - min)) / 100 + min;
+    snd_mixer_selem_set_playback_volume_all(elem, volumeAlsa);
+
+    snd_mixer_close(mixer);
 }
 
 void AudioPlayer::setEqualizer(int band, float gain) {

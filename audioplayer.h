@@ -8,6 +8,7 @@
 #include <QPushButton>
 #include <QSlider>
 #include <QLabel>
+#include "volumepanel.h"
 
 class AudioPlayer : public QWidget {
     Q_OBJECT
